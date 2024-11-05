@@ -1,0 +1,268 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Canvas Video Feed</title>
+    <style>
+        @font-face {
+          font-family: valencia;
+          src: url(Valencia.ttf);
+        }
+        :root {
+          --naranja: #FFA500;
+          --naranja-claro: #FFB347;
+          --naranja-oscuro: #FF8C00;
+          --mandarina: #FF8800;
+          --melon: #FF7F50;
+          --naranja-rojizo: #FF4500;
+          --durazno: #FFDAB9;
+          --coral-claro: #F08080;
+          --naranja-quemado: #CC5500;
+          --naranja-pastel: #FFD1B3;
+        }
+        html,body,#lienzos,#chat{
+            height:100%;
+            font-family: monospace;
+        }
+        body{
+            
+            overflow:hidden;
+            box-sizing: border-box;
+            padding:50px;
+            background:var(--naranja-pastel);
+        }
+        main{
+            display: flex;
+            flex-direction: row;
+            flex-wrap: nowrap;
+            justify-content: space-between;
+            align-items: stretch;
+            align-content: stretch;
+            height:80%;
+        }
+        #lienzos{
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);                      /* 3 columnas de igual ancho */
+            gap: 20px;                                                  /* Espacio entre los elementos */
+            justify-items: center;                                      /* Centra los elementos en cada celda */
+            align-items: center;                                        /* Centra los elementos verticalmente */
+            width:80%;
+        }
+        canvas{
+            border-radius:5px;
+            width:100%;
+        }
+        #chat{
+            width:20%;
+            text-align:center;
+        }
+        #mensajes{
+            height:90%;
+            overflow-y: scroll;
+            width:100%;
+            margin-bottom:10px;
+            padding-right:10px;
+        }
+        article{
+            background:var(--naranja);
+            color:white;
+            padding:10px;
+            border-radius:0px 5px 5px 5px;
+            margin-bottom:5px;
+            text-align:left;
+        }
+        h6,p{
+            padding:0px;
+            margin:0px;
+        }
+        input{width:90%;padding:10px 0px;}
+        .amarillo{
+            background:var(--mandarina);
+        }
+        /* Estiliza la barra de desplazamiento completa */
+        ::-webkit-scrollbar {
+            width: 12px;  /* Ancho de la barra */
+            height: 12px; /* Altura de la barra */
+        }
+
+        /* Estiliza el fondo de la barra de desplazamiento */
+        ::-webkit-scrollbar-track {
+            background: #f1f1f1; /* Color del fondo */
+            border-radius: 10px; /* Bordes redondeados */
+        }
+
+        /* Estiliza el 'pulgar' de la barra de desplazamiento (la parte que se mueve) */
+        ::-webkit-scrollbar-thumb {
+            background-color: #888; /* Color del pulgar */
+            border-radius: 10px;    /* Bordes redondeados */
+            border: 3px solid #f1f1f1; /* Espacio entre el pulgar y el borde del track */
+        }
+
+        /* Cambia el color del pulgar cuando está en hover */
+        ::-webkit-scrollbar-thumb:hover {
+            background-color: #555; /* Color cuando se hace hover */
+        }
+        h1{
+            font-family:  valencia,monospace;
+            text-align:center;
+            font-size:96px;
+            color:var(--naranja);
+            padding:0px;
+            margin:0px;
+            text-shadow:0px 4px 0px black;
+            
+        }
+        h1 img{
+            width:50px;
+        }
+    </style>
+</head>
+<body>
+    <h1><img src="taronja.svg">Taronja</h1>
+    <main>
+  <video id="video" autoplay playsinline style="display:none;"></video>
+    <div id="lienzos">
+        <canvas id="canvas"></canvas>
+    </div>
+    <div id="chat">
+        <div id="mensajes"></div>
+        <input>
+    </div>
+</main>
+  <script>
+        let socket = new WebSocket("wss://jotauve.es:3000");            // Me conecto a un servidor de sockets
+        const video = document.getElementById('video');                 // Seleccino el elemento de video
+        const canvas = document.getElementById('canvas');               // Selecciono el lienzo
+        const context = canvas.getContext('2d');                        // Creo un contexto 2D
+        const identificador = Date.now();                               // Mi identificador es el momento unix en el que nos encontramos
+        let lienzos = []                                                // Creo una lista vacia de lienzos
+        let contextos = []                                              // Creo una lista vacia de contextos
+      
+      
+        /////////////////////////////// ABRO CONEXION DE SOCKET //////////////////////////////
+        
+            socket.addEventListener("open", (event) => {                // Cuando alguien me abre una conexion
+              console.log("WebSocket connection opened");               // Se ha abierto una conexion
+            });
+
+            socket.addEventListener("error", (event) => {               // en el caso de que haya un error
+              console.error("WebSocket error:", event);                 // intenta decirme donde esta el error
+            });
+
+            //////////////////////////////// ABRO CONEXION DE SOCKET //////////////////////////////
+      
+        /////////////////////////////// RECIBO INFORMACION DEL SOCKET //////////////////////////////
+      socket.addEventListener("message", async (event) => {             // Cuando recibo un mensaje del servidor
+              let data;                                                 // Creo unos datos vacios
+
+              if (event.data instanceof Blob) {                         // Si el mensaje que llega es un blob
+                data = await event.data.text();                         // Convertir el Blob a texto
+              } else {                                                  // En caso contrario
+                data = event.data;                                      // Asumimos que ya es texto
+              }
+
+              const parsedData = JSON.parse(data);                      // Convierto los datos a JSON
+          
+                if(parsedData.tipo == "video"){                             // Si lo que recibo es video
+                  if(document.getElementById("id"+parsedData.identificador)){   // En el caso de que el lienzo ya exista
+                      try{                                                      // Intenta realizar una operacion
+                          let datosanteriores =  contextos[parsedData.identificador].getImageData(0,0,80,60) // Coge su contenido actual
+                          for(let i = 0;i<datosanteriores.data.length;i++){     // Repasa el contenido pixel a pixel
+                              datosanteriores.data[i] = parsedData.datos[i]     // Y REEMPLAZA la información actual con la que viene del socket
+                          }
+                          contextos[parsedData.identificador].putImageData(datosanteriores,0,0) // Y ahora pon la imagen en el lienzo
+                    }catch(Error){                                              // En caso de que de error
+                        console.log(Error)                                      // Dime el error para debug
+                    }
+                  }else{                                                        // en el caso de que NO exista
+                      if(parsedData.identificador != undefined){                // en el caso de que el id no sea undefined (canvas falso)
+                          let nuevolienzo = document.createElement("canvas")    // Creo un nuevo lienzo
+                          nuevolienzo.setAttribute("id","id"+parsedData.identificador)  // Le pongo el id
+                          nuevolienzo.width = 80                                // Establezco su anchura
+                          nuevolienzo.height = 60                               // Establezco su altura
+                          let nuevocontexto = nuevolienzo.getContext("2d")      // Creo un nuevo contexto
+                          contextos[parsedData.identificador] = nuevocontexto   // Lo añado a la lista de contextos
+                          document.querySelector("#lienzos").appendChild(nuevolienzo) // Añado el elemento al HTML contenedor
+                          lienzos[parsedData.identificador] = nuevolienzo       // Añado el lienzo a la lista de lienzos
+                    }
+                  }
+                }else{                                                          // Pero si es un mensaje:
+                    let idatrapado = parsedData.identificador
+                    let mensajeatrapado = parsedData.datos
+                    
+                    document.querySelector("#mensajes").innerHTML += `
+                        <article>
+                            <h6>`+idatrapado+`</h6>
+                            <p>`+mensajeatrapado+`</p>
+                        </article>
+                    `
+                    document.querySelector("#mensajes").scrollTop = 10000000000000000
+                }
+            });
+      
+        /////////////////////////////// RECIBO INFORMACION DEL SOCKET //////////////////////////////
+      
+        /////////////////////////////// ACCEDO A LA CAMARA //////////////////////////////
+      
+        navigator.mediaDevices.getUserMedia({ video: { width: 80, height: 60 }  })  // Activo la camara en el navegador
+          .then(stream => {
+            video.srcObject = stream;                                               // El contenido del video es la camara
+            video.addEventListener('loadeddata', () => {                            // Cuando haya cargado datos
+              canvas.width = video.videoWidth;                                      // La anchura del lienzo es la anchura del video
+              canvas.height = video.videoHeight;                                    // LA altura del lienzo es la altura del video
+            });
+          })
+          .catch(error => console.error('Error accessing the camera:', error));
+
+        /////////////////////////////// ACCEDO A LA CAMARA //////////////////////////////
+      
+      /////////////////////////////// ACTUALIZO MI PROPIO CANVAS //////////////////////////////
+      
+      var temporizador = setTimeout("bucle()",1000)                                 // Dentro de un segundo empiezo a refrescar
+        function bucle() {                                                          // Funcion de refresco
+          context.drawImage(video, 0, 0, canvas.width, canvas.height);              // En mi canvas dibujo el contenido del video
+            let datos = context.getImageData(0,0,80,60)                             // Ahora puedo coger los pixeles del canvas
+            socket.send(JSON.stringify(
+                {
+                    "identificador":identificador,
+                    "tipo":"video",
+                    "datos":datos.data
+                }
+            ))                                                                      // Y lo hago porque asi puedo enviar esa informacion por websockets
+          clearTimeout(temporizador)                                                // Paro el temporizador anterior
+            temporizador = setTimeout("bucle()",500)                                // Vuelvo a ejecutar el temporizador en un tiempo
+        }
+      
+      /////////////////////////////// ACTUALIZO MI PROPIO CANVAS //////////////////////////////
+      
+      
+      /////////////////////////////// CHAT //////////////////////////////
+      
+      let entrada = document.querySelector("input")
+      entrada.onkeypress = function(e){
+          if(e.key == "Enter"){
+              let mensaje = this.value
+              console.log("el mensaje es:",mensaje)
+              this.value = ""
+              socket.send(JSON.stringify(
+                {
+                    "identificador":identificador,
+                    "tipo":"mensajae",
+                    "datos":mensaje
+                }
+            )) 
+              document.querySelector("#mensajes").innerHTML += `
+                        <article  class="amarillo">
+                            <h6>`+identificador+`</h6>
+                            <p>`+mensaje+`</p>
+                        </article>
+                    `
+              document.querySelector("#mensajes").scrollTop = 10000000000000000
+          }
+      }
+      
+      /////////////////////////////// CHAT //////////////////////////////
+  </script>
+</body>
+</html>
